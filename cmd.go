@@ -9,7 +9,7 @@ var (
         Use:   "--s3-object-url HTTPS_URL --input-file FILE_PATH",
         Short: "Validate integrity of a downloaded S3 object file.",
         Long: "Verify integrity of a downloaded S3 object by generating an ETag and comparing\n" +
-            "it to the value supplied by the S3 API.\n\n" +
+            "it to a value retrieved from the S3 API.\n\n" +
             "- To supply credentials, see \"Specifying Credentials\" at:\n" +
             "    - https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#Spedifying-Credentials\n" +
             "- For further reading on ETags, see \"Using part-level checksums for multipart uploads\":\n" +

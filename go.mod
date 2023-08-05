@@ -1,4 +1,4 @@
-module s3-etagger
+module s3-etv
 
 go 1.20
 
