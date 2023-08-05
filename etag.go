@@ -15,6 +15,10 @@ import (
     "strings"
 )
 
+var (
+    hashChan = make(chan *hashValue)
+)
+
 // eTag represents an Amazon S3 object ETag value.
 type eTag struct {
     // Determines if the file was uploaded multiple chunks, i.e., Multipart.
@@ -134,28 +138,86 @@ func parseETag(eTag string) (eTagMd5 string, chunks int, err error) {
     return eTagMd5, chunks, err
 }
 
+// fileHandle is used to reference the file being hashed for
+// comparison.
+type fileHandle struct {
+    File *os.File
+    Free bool
+    Chan chan *md5ChunkArgs
+}
+
+// md5ChunkArgs represents a set of arguments that are sent to
+// fileHandle processes.
+type md5ChunkArgs struct {
+    ChunkIndex uint
+    Offset     int64
+    ChunkSize  int64
+}
+
+// hashValue is sent to the final hashing process. ChunkIndex
+// is included to ensure that all chunks are hashed in the proper
+// sequence.
+type hashValue struct {
+    ChunkIndex uint
+    Value      []byte
+}
+
+func newFileHandle(f *os.File) fileHandle {
+    c := make(chan *md5ChunkArgs)
+
+    // Server process that receives chunks to hash
+    go func() {
+        defer f.Close()
+        for {
+            args := <-c
+            if args == nil {
+                break
+            } else {
+                // Seek to file offset
+                f.Seek(args.Offset, io.SeekStart)
+
+                // Initialize an MD5 hasher and copy data to it
+                buff := md5.New()
+                io.CopyN(buff, f, args.ChunkSize)
+
+                // Send the hash value to the final hashing process
+                hashChan <- &hashValue{
+                    ChunkIndex: args.ChunkIndex,
+                    Value:      buff.Sum(nil),
+                }
+            }
+        }
+    }()
+
+    return fileHandle{
+        File: f,
+        Free: true,
+        Chan: c,
+    }
+}
+
 // validateFile hashes the chunks of inputFile to derive a newly
 // calculated eTag object for comparison.
 func (e eTag) validateFile(inputFile string) (calculated *eTag, isValid bool, err error) {
-
-    //============================
-    // OPEN INPUT FILE FOR READING
-    //============================
-
-    var file *os.File
-    if file, err = os.Open(inputFile); err != nil {
-        return calculated, isValid, errors.New(fmt.Sprintf("Failed to open file for reading: %v", err))
-    }
-    defer file.Close()
 
     //===========================
     // VALIDATE INTEGRITY OF FILE
     //===========================
 
-    finalMd5 := md5.New()
     chunkCount := 0
+    finalMd5 := md5.New()
 
     if e.ChunkCount == 0 {
+
+        //============================
+        // OPEN INPUT FILE FOR READING
+        //============================
+
+        var file *os.File
+        if file, err = os.Open(inputFile); err != nil {
+            return calculated, isValid, errors.New(fmt.Sprintf("Failed to open file for reading: %v", err))
+        }
+        defer file.Close()
 
         //==========================
         // HANDLE NON-MULTIPART FILE
@@ -173,27 +235,84 @@ func (e eTag) validateFile(inputFile string) (calculated *eTag, isValid bool, er
         // HANDLE MULTIPART FILE
         //======================
 
-        var c, copied int64
-        for ; err == nil; {
-            // MD5 hash the current chunk
-            buffM := md5.New()
-            c, err = io.CopyN(buffM, file, e.ChunkSize)
-            // Write current chunk's MD5 to the finalMd5
-            if c > 0 {
-                finalMd5.Write(buffM.Sum(nil))
-                copied += c
-                chunkCount++
+        // Initialize a file to read for each process
+        var fHandles []fileHandle
+        for i := 0; i < processCount; i++ {
+            var file *os.File
+            if file, err = os.Open(inputFile); err != nil {
+                return calculated, isValid, errors.New(fmt.Sprintf("Failed to open file for reading: %v", err))
             }
+            fHandles = append(fHandles, newFileHandle(file))
         }
 
-    }
+        //===============================================
+        // START A GOROUTINE THAT WILL PROCESS ALL HASHES
+        //===============================================
 
-    // Ensure EOF error
-    if err == io.EOF {
-        err = nil
-    } else {
-        // Unhandled exception occurred
-        return calculated, isValid, err
+        go func() {
+            // Track received hash chunks
+            chunkHashes := make(map[uint][]byte)
+            for {
+                // Receive chunk MD5
+                v := <-hashChan
+                if v == nil {
+                    break
+                }
+                chunkHashes[v.ChunkIndex] = v.Value
+            }
+            for i := uint(0); i < uint(e.ChunkCount); i++ {
+                finalMd5.Write(chunkHashes[i])
+            }
+            hashChan <- nil
+        }()
+
+        //===============================================
+        // ROUND ROBIN CHUNK PROCESSING ACROSS GOROUTINES
+        //===============================================
+
+        stat, _ := fHandles[0].File.Stat()
+        var byteCount int64
+        var lastRoutine int
+        for ; chunkCount < e.ChunkCount; chunkCount++ {
+
+            if lastRoutine == processCount {
+                lastRoutine = 0
+            }
+
+            chunkSize := e.ChunkSize
+            if byteCount+e.ChunkSize > stat.Size() {
+                chunkSize = stat.Size() - (int64(e.ChunkCount-1) * e.ChunkSize)
+            }
+
+            fHandles[lastRoutine].Chan <- &md5ChunkArgs{
+                ChunkIndex: uint(chunkCount),
+                Offset:     byteCount,
+                ChunkSize:  chunkSize,
+            }
+
+            // Move processed byte count forward
+            byteCount += e.ChunkSize
+
+            lastRoutine++
+        }
+
+        //=========
+        // CLEAN UP
+        //=========
+
+        for _, fh := range fHandles {
+            if len(fh.Chan) > 0 {
+                <-fh.Chan
+            }
+            // Tells goroutine that we're shutting down
+            fh.Chan <- nil
+            close(fh.Chan)
+        }
+
+        // Indicate to hashChan that all chunks have been sent
+        hashChan <- nil
+        <-hashChan
+        close(hashChan)
     }
 
     //===============

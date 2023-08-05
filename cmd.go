@@ -23,6 +23,7 @@ func init() {
     rootCmd.PersistentFlags().StringVarP(&inputFile, "input-file", "i", "", "Downloaded S3 object file.")
     rootCmd.PersistentFlags().StringVarP(&s3ObjectUrl, "s3-object-url", "u", "", "HTTP URL to the object.")
     rootCmd.PersistentFlags().StringVarP(&s3Region, "s3-region", "r", "us-east-1", "Region of the S3 bucket.")
+    rootCmd.PersistentFlags().IntVarP(&processCount, "process-count", "p", 4, "Multiprocessing limit.")
     rootCmd.MarkPersistentFlagRequired("input-file")
     rootCmd.MarkPersistentFlagRequired("s3-object-url")
 }

@@ -2,13 +2,16 @@ package main
 
 import (
     "fmt"
+    "math"
     "regexp"
+    "time"
 )
 
 var (
     inputFile        string
     s3ObjectUrl      string
     s3Region         string
+    processCount     int
     defaultS3Region  = "us-east-1"
     md5Reg, _        = regexp.Compile("(?i)([0-9|A-F]){32}")
     mB               = 1024 * 1024
@@ -42,9 +45,12 @@ func validate() {
     var calculated *eTag
     var isValid bool
     wLog.Printf("Verifying file integrity. This will take some time.")
+    wLog.Printf("Using process count: %v", processCount)
+    start := time.Now()
     if calculated, isValid, err = etag.validateFile(inputFile); err != nil {
         eLog.Fatalf("Failed to verify integrity of file: %v", err)
     }
+    duration := time.Since(start)
 
     iLog.Printf("Integrity check finished")
     iLog.Printf("AWS ETag        > %s", etag.Value)
@@ -54,12 +60,14 @@ func validate() {
     if isValid {
         iLog.Printf("ETag values matched")
         iLog.Printf("File integrity status: confirmed")
-        outcome = "Verified"
+        outcome = "verified"
     } else {
         iLog.Print("ETag values mismatched")
         wLog.Printf("File integrity status: compromised")
-        outcome = "COMPROMISED"
+        outcome = "compromised"
     }
 
+    iLog.Printf("Verification Duration: %v:%v:%v.%v", math.Round(duration.Hours()),
+        math.Round(duration.Minutes()), math.Round(duration.Seconds()), duration.Milliseconds())
     fmt.Printf("\nFile integrity: %s\n", outcome)
 }
