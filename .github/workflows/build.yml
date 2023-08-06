@@ -11,15 +11,14 @@ jobs:
     container:
       image: golang:1.20-bullseye
     steps:
+      - uses: actions/checkout@v3
       - name: Build
         id: build-binary
         run: |
-          pwd && ls -lah
           GOOS=linux GOARCH=amd64 go build -buildvcs=false -o s3-etv.elf
           GOOS=windows GOARCH=amd64 go build -buildvcs=false -o s3-etv.exe
           GOOS=darwin GOARCH=amd64 go build -buildvcs=false -o s3-etv.darwin_amd64
           GOOS=darwin GOARCH=amd64 go build -buildvcs=false -o s3-etv.darwin_arm64
-
       - name: Release
         id: issue-release
         uses: ncipollo/release-action@v1
