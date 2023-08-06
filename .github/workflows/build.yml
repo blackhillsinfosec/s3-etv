@@ -14,6 +14,7 @@ jobs:
       - name: Build
         id: build-binary
         run: |
+          pwd && ls -lah
           GOOS=linux GOARCH=amd64 go build -buildvcs=false -o s3-etv.elf
           GOOS=windows GOARCH=amd64 go build -buildvcs=false -o s3-etv.exe
           GOOS=darwin GOARCH=amd64 go build -buildvcs=false -o s3-etv.darwin_amd64
