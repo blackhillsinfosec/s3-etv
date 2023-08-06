@@ -237,7 +237,7 @@ func (e eTag) validateFile(inputFile string) (calculated *eTag, isValid bool, er
 
         // Initialize a file to read for each process
         var fHandles []fileHandle
-        for i := 0; i < processCount; i++ {
+        for i := 0; i < threadCount; i++ {
             var file *os.File
             if file, err = os.Open(inputFile); err != nil {
                 return calculated, isValid, errors.New(fmt.Sprintf("Failed to open file for reading: %v", err))
@@ -275,7 +275,7 @@ func (e eTag) validateFile(inputFile string) (calculated *eTag, isValid bool, er
         var lastRoutine int
         for ; chunkCount < e.ChunkCount; chunkCount++ {
 
-            if lastRoutine == processCount {
+            if lastRoutine == threadCount {
                 lastRoutine = 0
             }
 

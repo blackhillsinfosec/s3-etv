@@ -11,7 +11,7 @@ var (
     inputFile        string
     s3ObjectUrl      string
     s3Region         string
-    processCount     int
+    threadCount      int
     defaultS3Region  = "us-east-1"
     md5Reg, _        = regexp.Compile("(?i)([0-9|A-F]){32}")
     mB               = 1024 * 1024
@@ -45,7 +45,7 @@ func validate() {
     var calculated *eTag
     var isValid bool
     wLog.Printf("Verifying file integrity. This will take some time.")
-    wLog.Printf("Using process count: %v", processCount)
+    wLog.Printf("Using process count: %v", threadCount)
     start := time.Now()
     if calculated, isValid, err = etag.validateFile(inputFile); err != nil {
         eLog.Fatalf("Failed to verify integrity of file: %v", err)
