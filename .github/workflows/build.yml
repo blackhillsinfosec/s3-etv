@@ -1,0 +1,29 @@
+on:
+  push:
+    tags:
+      - '*-release'
+
+jobs:
+
+  build_s3-etv:
+    name: Build s3-etv
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.20-bullseye
+    steps:
+      - name: Build
+        id: build-binary
+        run: |
+          GOOS=linux GOARCH=amd64 go build -buildvcs=false -o s3-etv.elf
+          GOOS=windows GOARCH=amd64 go build -buildvcs=false -o s3-etv.exe
+          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -o s3-etv.darwin_amd64
+          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -o s3-etv.darwin_arm64
+
+      - name: Release
+        id: issue-release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "s3-etv.*"
+          allowUpdates: "true"
+          body: "Releasing: ${{ github.ref_name }}"
+          tag: ${{ github.ref_name }}
